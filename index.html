@@ -31,6 +31,11 @@
   #mondo{position:fixed;inset:0;overflow:hidden;transform-origin:50% 50%;will-change:transform}
   .foto{position:absolute;left:0;top:0;border:7px solid #fff;border-bottom-width:7px;border-radius:6px;background:#222;overflow:hidden;
     box-shadow:0 22px 60px rgba(0,0,0,.6);transform-origin:50% 50%;will-change:transform,opacity;display:none}
+  #firma{position:fixed;right:92px;bottom:30px;z-index:40;font:500 12px/1.2 'Segoe UI',Arial,sans-serif;letter-spacing:.04em;color:rgba(255,255,255,.55);text-shadow:0 1px 3px rgba(0,0,0,.7);pointer-events:none}
+  @media (max-width:900px){#firma{display:none}}
+  #btnPausa{position:fixed;right:22px;bottom:22px;z-index:60;width:54px;height:54px;border-radius:50%;border:2px solid rgba(255,255,255,.55);background:rgba(27,94,32,.88);color:#fff;font:700 20px/1 'Segoe UI',Arial,sans-serif;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .35s,transform .2s;letter-spacing:-2px}
+  body.avviato.mostra-cursore #btnPausa, body.avviato.in-pausa #btnPausa{opacity:1;pointer-events:auto}
+  #btnPausa:hover{transform:scale(1.08);background:#2e7d32}
   .foto video{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;opacity:0;pointer-events:none}
   .foto img{display:block;width:100%;height:100%;object-fit:cover;user-select:none;-webkit-user-drag:none}
 
@@ -70,7 +75,7 @@
   #inizio .aiuto{max-width:62ch;font-size:clamp(.8rem,1.05vw,1.05rem);line-height:1.5;color:rgba(255,255,255,.66)}
   #inizio .demo{display:none;padding:.35em 1em;border-radius:999px;border:1px dashed var(--oro);color:var(--oro);
     font-size:clamp(.75rem,1vw,1rem);letter-spacing:.08em;text-transform:uppercase}
-  #inizio .team{position:absolute;bottom:2.6vh;font-size:.85rem;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.45)}
+  #inizio .team{position:absolute;bottom:2.6vh;width:92%;text-align:center;font-size:.75rem;letter-spacing:.08em;text-transform:none;color:rgba(255,255,255,.45)}
 
   /* ---------- transizioni ---------- */
   #nastro{position:fixed;left:0;top:-6vh;height:112vh;width:120vw;z-index:40;pointer-events:none;display:flex;
@@ -107,8 +112,8 @@
   <button id="btnInizio" type="button">Avvia il viaggio</button>
   <div class="aiuto">Un clic attiva musica e schermo intero.<br>
     Durante il volo puoi <b>cliccare una foto</b> per andare subito a quella.<br>
-    Tasti: <b>F</b> schermo intero · <b>M</b> musica sì/no · <b>N</b> brano successivo · <b>&larr; &rarr;</b> foto precedente/successiva</div>
-  <div class="team">Team Digitale</div>
+    Tasti: <b>F</b> schermo intero · <b>M</b> musica sì/no · <b>Spazio</b> pausa/riprendi · <b>&larr; &rarr;</b> foto precedente/successiva</div>
+  <div class="team">Pagina creata dal Team Digitale per l'IIS MENDEL di Villa Cortese</div>
 </div>
 
 <div id="nastro"><i></i><i></i><i></i></div>
@@ -116,6 +121,8 @@
 
 <div id="dbg"></div>
 
+<div id="firma">Pagina creata dal Team Digitale per l'IIS MENDEL di Villa Cortese</div>
+<button id="btnPausa" type="button" title="Pausa / riprendi (barra spaziatrice)" aria-label="Pausa o riprendi">II</button>
 <script>
 /* =====================================================================
    IMPOSTAZIONI  (modificabili)
@@ -331,7 +338,8 @@ function nascondiDida(){ didascalia.classList.remove('on'); ombra.classList.remo
 
 /* ---------- macchina a stati: volo -> sosta -> volo ---------- */
 let st = 'idle', t = 0, n = 0, da = null, a = null, durata = CFG.vola, avviato = false, clock = 0;
-let tenuta = CFG.resta, fadeMusica = false;
+let tenuta = CFG.resta, fadeMusica = false, pausa = false;
+const LOOP = !params.has('noloop');          // di default il viaggio ricomincia da capo
 let tipoTr = 'nessuna', trFatto = true, trQuando = 0, giro = 0;
 const SEQ = ['tricolore','lampo','warp'];
 function scegliTransizione(intro){
@@ -365,6 +373,7 @@ function vaiA(m, dur, intro){
 let prevX = 0, prevZ = 0, vz = 0;
 function aggiorna(dt){
   clock += dt; t += dt;
+  if (pausa && st === 'sosta') t -= dt;          // in pausa: si resta fermi davanti alla foto
   if (st === 'idle'){ return; }
   if (st === 'volo'){
     const p = Math.min(1, t/durata);
@@ -382,9 +391,9 @@ function aggiorna(dt){
       tenuta = CFG.resta;
       if (FOTO[kk].v && c.vid){                           // video: parte e dura quanto dura
         tenuta = Math.max(CFG.resta, FOTO[kk].d + 0.5);
-        try{ c.vid.currentTime = 0; c.vid.playbackRate = Math.min(16, SPEED); c.vid.play().catch(()=>{}); }catch(e){}
+        try{ c.vid.currentTime = 0; c.vid.playbackRate = Math.min(16, SPEED); if (!pausa) c.vid.play().catch(()=>{}); }catch(e){}
       }
-      if (kk === N-1 && !params.has('loop')) tenuta = 7;   // ultima foto: ci si ferma e la musica sfuma
+      if (kk === N-1) tenuta = 7;                          // ultima foto: ferma qualche secondo, la musica sfuma
     }
   } else if (st === 'sosta'){
     const pe = posa(n);
@@ -392,7 +401,9 @@ function aggiorna(dt){
     cam.y = pe.y + Math.cos(t*0.5)*8;
     cam.z = pe.z + Math.min(t,6)*CFG.deriva;
     if (t >= tenuta){
-      if (mod(n,N) === N-1 && !params.has('loop')) fadeMusica = true; else vaiA(n+1);
+      if (mod(n,N) === N-1 && !LOOP) fadeMusica = true;
+      else { if (mod(n,N) === N-1) ricominciaMusica(); vaiA(n+1); }
+    } else if (mod(n,N) === N-1 && LOOP && t >= tenuta-3.5 && !pausa){ fadeMusica = true;
     }
   }
 }
@@ -401,7 +412,7 @@ let last = 0;
 function frame(ts){
   const dt = Math.min(0.25, (ts-last)/1000 || 0.016) * SPEED; last = ts;
   aggiorna(dt);
-  if (fadeMusica && audio.volume > 0){ audio.volume = Math.max(0, audio.volume - dt*CFG.volume/4); if (audio.volume <= 0) audio.pause(); }
+  if (fadeMusica && audio.volume > 0 && !pausa){ audio.volume = Math.max(0, audio.volume - dt*CFG.volume/3); if (audio.volume <= 0 && !LOOP) audio.pause(); }
   if (dt > 0){
     vz = (cam.z - prevZ)/dt;
     const vx = (cam.x - prevX)/dt;
@@ -422,7 +433,12 @@ function suona(){
   audio.src = BRANI[bi % BRANI.length];
   audio.play().catch(()=>{});
 }
-audio.addEventListener('ended', ()=>{ if (BRANI.length === 1 && !params.has('loop')) return; bi++; suona(); });
+audio.addEventListener('ended', ()=>{ if (BRANI.length === 1) return; bi++; suona(); });
+function ricominciaMusica(){                      // alla fine del giro la colonna sonora riparte dall'inizio
+  fadeMusica = false; audio.volume = mute ? CFG.volume : CFG.volume;
+  try{ audio.currentTime = 0; }catch(e){}
+  if (!pausa) audio.play().catch(()=>{});
+}
 audio.addEventListener('error', ()=>{ errori++; bi++; suona(); });
 audio.addEventListener('playing', ()=>{ errori = 0; });
 
@@ -437,7 +453,7 @@ document.addEventListener('visibilitychange', ()=>{ if (!document.hidden && avvi
 
 function avvia(){
   if (avviato) return; avviato = true;
-  $('inizio').classList.add('via');
+  $('inizio').classList.add('via'); document.body.classList.add('avviato');
   if (!document.fullscreenElement && !params.has('nofs')) schermoIntero();
   suona(); schermoAcceso();
   n = -1;                      // così il primo volo parte da lontano e arriva alla foto 0
@@ -449,8 +465,8 @@ addEventListener('keydown', e => {
   if (!avviato && (k==='enter' || k===' ')) { avvia(); e.preventDefault(); return; }
   if (k==='f') schermoIntero();
   if (k==='m'){ mute = !mute; audio.muted = mute; }
-  if (k==='n'){ bi++; suona(); }
-  if (avviato && k==='arrowright'){ fadeMusica = false; vaiA(n+1); }
+  if (avviato && (k===' ' || k==='p')){ setPausa(!pausa); e.preventDefault(); }
+  if (avviato && k==='arrowright'){ fadeMusica = false; audio.volume = CFG.volume; vaiA(n+1); }
   if (avviato && k==='arrowleft')  vaiA(n-1);
 });
 
@@ -467,6 +483,14 @@ addEventListener('pointerdown', e => {
   if (c.m === n && st === 'volo') return;
   vaiA(c.m);
 });
+function setPausa(v){
+  pausa = v; document.body.classList.toggle('in-pausa', v);
+  $('btnPausa').textContent = v ? '\u25B6\uFE0E' : 'II';
+  const c = carte[mod(n,N)];
+  if (v){ audio.pause(); if (c && c.vid) c.vid.pause(); }
+  else { if (!(fadeMusica && !LOOP)) audio.play().catch(()=>{}); if (c && c.vid && st === 'sosta' && FOTO[c.k].v) c.vid.play().catch(()=>{}); }
+}
+$('btnPausa').addEventListener('click', e => { e.stopPropagation(); if (avviato) setPausa(!pausa); e.currentTarget.blur(); });
 let tCursore; addEventListener('mousemove', ()=>{ document.body.classList.add('mostra-cursore'); clearTimeout(tCursore); tCursore = setTimeout(()=>document.body.classList.remove('mostra-cursore'), 2200); });
 
 /* sfondo iniziale e avvio del disegno dietro la schermata di benvenuto */
