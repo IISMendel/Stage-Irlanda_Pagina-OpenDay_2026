@@ -112,7 +112,7 @@
   <button id="btnInizio" type="button">Avvia il viaggio</button>
   <div class="aiuto">Un clic attiva musica e schermo intero.<br>
     Durante il volo puoi <b>cliccare una foto</b> per andare subito a quella.<br>
-    Tasti: <b>F</b> schermo intero · <b>M</b> musica sì/no · <b>Spazio</b> pausa/riprendi · <b>&larr; &rarr;</b> foto precedente/successiva</div>
+    Tasti: <b>F</b> schermo intero · <b>M</b> musica sì/no · <b>Spazio</b> pausa/riprendi · <b>clic su una foto</b> per fermarsi su di lei · <b>&larr; &rarr;</b> foto precedente/successiva</div>
   <div class="team">Pagina creata dal Team Digitale per l'IIS MENDEL di Villa Cortese</div>
 </div>
 
@@ -338,7 +338,7 @@ function nascondiDida(){ didascalia.classList.remove('on'); ombra.classList.remo
 
 /* ---------- macchina a stati: volo -> sosta -> volo ---------- */
 let st = 'idle', t = 0, n = 0, da = null, a = null, durata = CFG.vola, avviato = false, clock = 0;
-let tenuta = CFG.resta, fadeMusica = false, pausa = false;
+let tenuta = CFG.resta, fadeMusica = false, pausa = false, fermo = false;
 const LOOP = !params.has('noloop');          // di default il viaggio ricomincia da capo
 let tipoTr = 'nessuna', trFatto = true, trQuando = 0, giro = 0;
 const SEQ = ['tricolore','lampo','warp'];
@@ -373,7 +373,7 @@ function vaiA(m, dur, intro){
 let prevX = 0, prevZ = 0, vz = 0;
 function aggiorna(dt){
   clock += dt; t += dt;
-  if (pausa && st === 'sosta') t -= dt;          // in pausa: si resta fermi davanti alla foto
+  if ((pausa || fermo) && st === 'sosta') t -= dt;          // in pausa: si resta fermi davanti alla foto
   if (st === 'idle'){ return; }
   if (st === 'volo'){
     const p = Math.min(1, t/durata);
@@ -389,6 +389,7 @@ function aggiorna(dt){
       st = 'sosta'; t = 0; warp = 0; Fe = F; mostraDida(mod(n,N));
       const kk = mod(n,N), c = carte[kk];
       tenuta = CFG.resta;
+      if (c.vid) c.vid.loop = fermo && !pausa;
       if (FOTO[kk].v && c.vid){                           // video: parte e dura quanto dura
         tenuta = Math.max(CFG.resta, FOTO[kk].d + 0.5);
         try{ c.vid.currentTime = 0; c.vid.playbackRate = Math.min(16, SPEED); if (!pausa) c.vid.play().catch(()=>{}); }catch(e){}
@@ -403,7 +404,7 @@ function aggiorna(dt){
     if (t >= tenuta){
       if (mod(n,N) === N-1 && !LOOP) fadeMusica = true;
       else { if (mod(n,N) === N-1) ricominciaMusica(); vaiA(n+1); }
-    } else if (mod(n,N) === N-1 && LOOP && t >= tenuta-3.5 && !pausa){ fadeMusica = true;
+    } else if (mod(n,N) === N-1 && LOOP && t >= tenuta-3.5 && !pausa && !fermo){ fadeMusica = true;
     }
   }
 }
@@ -465,9 +466,9 @@ addEventListener('keydown', e => {
   if (!avviato && (k==='enter' || k===' ')) { avvia(); e.preventDefault(); return; }
   if (k==='f') schermoIntero();
   if (k==='m'){ mute = !mute; audio.muted = mute; }
-  if (avviato && (k===' ' || k==='p')){ setPausa(!pausa); e.preventDefault(); }
-  if (avviato && k==='arrowright'){ fadeMusica = false; audio.volume = CFG.volume; vaiA(n+1); }
-  if (avviato && k==='arrowleft')  vaiA(n-1);
+  if (avviato && (k===' ' || k==='p')){ (pausa || fermo) ? riprendi() : setPausa(true); e.preventDefault(); }
+  if (avviato && k==='arrowright'){ fadeMusica = false; audio.volume = CFG.volume; fermo = false; vaiA(n+1); aggiornaUI(); }
+  if (avviato && k==='arrowleft'){ fermo = false; vaiA(n-1); aggiornaUI(); }
 });
 
 /* ---------- clic su una foto: la camera vola fino a lei ---------- */
@@ -479,18 +480,27 @@ addEventListener('pointerdown', e => {
   }
   if (!el) return;
   const c = carte.find(c => c.el === el); if (!c) return;
-  if (c.m === n && st === 'sosta') return;
-  if (c.m === n && st === 'volo') return;
-  vaiA(c.m);
+  if (c.m === n){                                    // clic sulla foto in primo piano: ferma / riprendi
+    if (st === 'sosta') (pausa || fermo) ? riprendi() : ferma();
+    return;
+  }
+  vaiA(c.m); ferma();                                // clic su un'altra foto: ci vola e ci si ferma
 });
+function aggiornaUI(){
+  const f = pausa || fermo;
+  document.body.classList.toggle('in-pausa', f);
+  $('btnPausa').textContent = f ? '\u25B6\uFE0E' : 'II';
+  const c = carte[mod(n,N)]; if (c && c.vid) c.vid.loop = fermo && !pausa;   // un video su cui ci si ferma gira in loop
+}
+function ferma(){ fermo = true; aggiornaUI(); }
+function riprendi(){ fermo = false; if (pausa) setPausa(false); else aggiornaUI(); }
 function setPausa(v){
-  pausa = v; document.body.classList.toggle('in-pausa', v);
-  $('btnPausa').textContent = v ? '\u25B6\uFE0E' : 'II';
+  pausa = v; aggiornaUI();
   const c = carte[mod(n,N)];
   if (v){ audio.pause(); if (c && c.vid) c.vid.pause(); }
   else { if (!(fadeMusica && !LOOP)) audio.play().catch(()=>{}); if (c && c.vid && st === 'sosta' && FOTO[c.k].v) c.vid.play().catch(()=>{}); }
 }
-$('btnPausa').addEventListener('click', e => { e.stopPropagation(); if (avviato) setPausa(!pausa); e.currentTarget.blur(); });
+$('btnPausa').addEventListener('click', e => { e.stopPropagation(); if (avviato){ (pausa || fermo) ? riprendi() : setPausa(true); } e.currentTarget.blur(); });
 let tCursore; addEventListener('mousemove', ()=>{ document.body.classList.add('mostra-cursore'); clearTimeout(tCursore); tCursore = setTimeout(()=>document.body.classList.remove('mostra-cursore'), 2200); });
 
 /* sfondo iniziale e avvio del disegno dietro la schermata di benvenuto */
